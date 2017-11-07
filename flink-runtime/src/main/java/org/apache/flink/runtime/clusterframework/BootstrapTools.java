@@ -372,7 +372,7 @@ public class BootstrapTools {
 			Class<?> mainClass) {
 
 		final Map<String, String> startCommandValues = new HashMap<>();
-		startCommandValues.put("java", "$JAVA_HOME/bin/java");
+		startCommandValues.put("java", "%JAVA_HOME%/bin/java");
 
 		ArrayList<String> params = new ArrayList<>();
 		params.add(String.format("-Xms%dm", tmParams.taskManagerHeapSizeMB()));
