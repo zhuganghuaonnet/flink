@@ -241,6 +241,10 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 			}
 		}
 
+		if (instanceBasePath.exists()) {
+			LOG.info("##########################{} exists", instanceBasePath);
+		}
+
 		// clean it, this will remove the last part of the path but RocksDB will recreate it
 		try {
 			if (instanceRocksDBPath.exists()) {
@@ -750,6 +754,8 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
 	private static final class RocksDBIncrementalSnapshotOperation<K> {
 
+		private static final Logger LOG = LoggerFactory.getLogger("RocksDBIncrementalSnapshotOperation");
+
 		/** The backend which we snapshot. */
 		private final RocksDBKeyedStateBackend<K> stateBackend;
 
@@ -775,7 +781,7 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 		private final CloseableRegistry closeableRegistry = new CloseableRegistry();
 
 		// new sst files since the last completed checkpoint
-		private final Map<StateHandleID, StreamStateHandle> sstFiles = new HashMap<>();
+		private final Map<StateHandleID, StreamStateHandle>  sstFiles = new HashMap<>();
 
 		// handles to the misc files in the current snapshot
 		private final Map<StateHandleID, StreamStateHandle> miscFiles = new HashMap<>();
@@ -906,20 +912,37 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
 			// create hard links of living files in the checkpoint path
 			Checkpoint checkpoint = Checkpoint.create(stateBackend.db);
-			checkpoint.createCheckpoint(backupPath.getPath());
+			//checkpoint.createCheckpoint(backupPath.getPath());
+			// compensate for the fact that Flink paths are slashed
+			String checkpointPath = backupPath.hasWindowsDrive() ?
+				backupPath.getPath().substring(1) :
+				backupPath.getPath();
+
+			checkpoint.createCheckpoint(checkpointPath);
 		}
 
 		KeyedStateHandle materializeSnapshot() throws Exception {
 
+			LOG.info("############################Start materializeSnapshot at {}", System.currentTimeMillis());
+
 			stateBackend.cancelStreamRegistry.registerCloseable(closeableRegistry);
 
 			// write meta data
+			//LOG.info("############################Start materializeMetaData at {}", System.currentTimeMillis());
 			metaStateHandle = materializeMetaData();
+			//LOG.info("############################Finished materializeMetaData at {}", System.currentTimeMillis());
 
 			// write state data
 			Preconditions.checkState(backupFileSystem.exists(backupPath));
 
 			FileStatus[] fileStatuses = backupFileSystem.listStatus(backupPath);
+			final String backupPathString = backupPath.toString();
+			LOG.info("############################Total have {} files to checkin, {}", fileStatuses.length, backupPathString);
+			for (FileStatus fileStatus : fileStatuses){
+				LOG.info("############################FilePath {}", fileStatus.getPath().toString());
+			}
+
+			int numFileCheckedIn = 0;
 			if (fileStatuses != null) {
 				for (FileStatus fileStatus : fileStatuses) {
 					final Path filePath = fileStatus.getPath();
@@ -937,18 +960,27 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 								stateHandleID,
 								new PlaceholderStreamStateHandle());
 						} else {
+							LOG.info("############################Start materializeStateData sstFile {} at {}", filePath.toString(), System.currentTimeMillis());
 							sstFiles.put(stateHandleID, materializeStateData(filePath));
+							//LOG.info("############################Finished materializeStateData sstFile {} at {}", filePath.toString(), System.currentTimeMillis());
 						}
 					} else {
+						LOG.info("############################Start materializeStateData {} at {}", filePath.toString(), System.currentTimeMillis());
 						StreamStateHandle fileHandle = materializeStateData(filePath);
+						//LOG.info("############################Finished materializeMetaData {} at {}", filePath.toString(), System.currentTimeMillis());
 						miscFiles.put(stateHandleID, fileHandle);
 					}
+					LOG.info("############################Checked in file count {}, {}", ++numFileCheckedIn, backupPathString);
 				}
 			}
+
+			LOG.info("############################before sync materializeSnapshot at {}, ", System.currentTimeMillis());
 
 			synchronized (stateBackend.materializedSstFiles) {
 				stateBackend.materializedSstFiles.put(checkpointId, sstFiles.keySet());
 			}
+
+			LOG.info("############################Finished materializeSnapshot at {}", System.currentTimeMillis());
 
 			return new IncrementalKeyedStateHandle(
 				stateBackend.backendUID,
@@ -1054,6 +1086,12 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 
 	private void createDB() throws IOException {
 		List<ColumnFamilyHandle> columnFamilyHandles = new ArrayList<>(1);
+		if (!this.instanceBasePath.exists()) {
+			LOG.info("##########################{} does not exists", this.instanceBasePath);
+			if (!this.instanceBasePath.mkdirs()) {
+				LOG.info("##########################{} Create failed", this.instanceBasePath);
+			}
+		}
 		this.db = openDB(instanceRocksDBPath.getAbsolutePath(), Collections.emptyList(), columnFamilyHandles);
 		this.defaultColumnFamily = columnFamilyHandles.get(0);
 	}
@@ -1400,8 +1438,13 @@ public class RocksDBKeyedStateBackend<K> extends AbstractKeyedStateBackend<K> {
 					List<ColumnFamilyHandle> columnFamilyHandles =
 						new ArrayList<>(1 + columnFamilyDescriptors.size());
 
+					String restorePath = restoreInstancePath.hasWindowsDrive() ?
+						restoreInstancePath.getPath().substring(1) :
+						restoreInstancePath.getPath();
+
 					try (RocksDB restoreDb = stateBackend.openDB(
-						restoreInstancePath.getPath(),
+						restorePath,
+						//restoreInstancePath.getPath(),
 						columnFamilyDescriptors,
 						columnFamilyHandles)) {
 

@@ -413,7 +413,24 @@ public abstract class FlinkKafkaConsumerBase<T> extends RichParallelSourceFuncti
 
 		subscribedPartitionsToStartOffsets = new HashMap<>();
 
-		List<KafkaTopicPartition> allPartitions = partitionDiscoverer.discoverPartitions();
+		//TODO: add retry logic here due to sometime retrive topic partition information failed from Siphon
+		//List<KafkaTopicPartition> allPartitions = partitionDiscoverer.discoverPartitions();
+		int maxRetryTimes = 5;
+		List<KafkaTopicPartition> allPartitions = null;
+		while (maxRetryTimes > 0) {
+			try {
+				allPartitions = partitionDiscoverer.discoverPartitions();
+				break;
+			}
+			catch (RuntimeException ex){
+				LOG.warn("Try to get partition info from Siphon failed, retry times {}", maxRetryTimes);
+				if (maxRetryTimes == 1){
+					throw ex;
+				}
+			}
+			Thread.sleep(1000L);
+			maxRetryTimes--;
+		}
 
 		if (restoredState != null) {
 			for (KafkaTopicPartition partition : allPartitions) {

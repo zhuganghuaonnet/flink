@@ -297,10 +297,17 @@ public class RocksDBStateBackend extends AbstractStateBackend {
 		String tempDir = env.getTaskManagerInfo().getTmpDirectories()[0];
 		ensureRocksDBIsLoaded(tempDir);
 
+		LOG.info("#####################ensureRocksDBIsLoaded finished");
+
 		lazyInitializeForJob(env, operatorIdentifier);
 
+		LOG.info("#####################lazyInitializeForJob finished");
+
 		File instanceBasePath =
-				new File(getNextStoragePath(), "job-" + jobId + "_op-" + operatorIdentifier + "_uuid-" + UUID.randomUUID());
+				new File(getNextStoragePath(), operatorIdentifier + "_uuid");
+				//new File(getNextStoragePath(), "job-" + jobId + "_op-" + operatorIdentifier + "_uuid-" + UUID.randomUUID());
+
+		LOG.info("#####################instanceBasePath {}", instanceBasePath.toString());
 
 		return new RocksDBKeyedStateBackend<>(
 				operatorIdentifier,
@@ -532,9 +539,11 @@ public class RocksDBStateBackend extends AbstractStateBackend {
 						LOG.debug("Attempting to create RocksDB native library folder {}", rocksLibFolder);
 						// noinspection ResultOfMethodCallIgnored
 						rocksLibFolder.mkdirs();
+						LOG.info("#####################mkdirs Successfully");
 
 						// explicitly load the JNI dependency if it has not been loaded before
 						NativeLibraryLoader.getInstance().loadLibrary(rocksLibFolder.getAbsolutePath());
+						LOG.info("#####################NativeLibraryLoader Successfully");
 
 						// this initialization here should validate that the loading succeeded
 						RocksDB.loadLibrary();

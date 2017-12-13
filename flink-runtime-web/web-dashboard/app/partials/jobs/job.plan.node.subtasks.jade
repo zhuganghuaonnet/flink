@@ -31,6 +31,7 @@ table.table.table-hover.table-clickable.table-activable.table-inner(ng-if="subta
       th Records sent
       th Attempt
       th Host
+      th Subtask
       th Status
   tbody
     tr(ng-repeat="subtask in subtasks | orderBy:'host'")
@@ -56,5 +57,6 @@ table.table.table-hover.table-clickable.table-activable.table-inner(ng-if="subta
 
       td {{ subtask.attempt + 1 }}
       td {{ subtask.host }}
+      td {{ subtask.subtask + 1 }}
       td 
         bs-label(status="{{subtask.status}}") {{subtask.status}}

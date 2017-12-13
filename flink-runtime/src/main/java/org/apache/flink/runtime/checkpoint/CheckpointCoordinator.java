@@ -785,11 +785,14 @@ public class CheckpointCoordinator {
 
 				switch (checkpoint.acknowledgeTask(message.getTaskExecutionId(), message.getSubtaskState(), message.getCheckpointMetrics())) {
 					case SUCCESS:
-						LOG.debug("Received acknowledge message for checkpoint {} from task {} of job {}.",
+						LOG.info("Received acknowledge message for checkpoint {} from task {} of job {}.",
 							checkpointId, message.getTaskExecutionId(), message.getJob());
 
 						if (checkpoint.isFullyAcknowledged()) {
 							completePendingCheckpoint(checkpoint);
+						}
+						else {
+							LOG.info("NumberOfNonAcknowledgedTasks {}", checkpoint.getNumberOfNonAcknowledgedTasks());
 						}
 						break;
 					case DUPLICATE:
@@ -856,16 +859,22 @@ public class CheckpointCoordinator {
 		final long checkpointId = pendingCheckpoint.getCheckpointId();
 		final CompletedCheckpoint completedCheckpoint;
 
+		LOG.info("#################################Get into method completePendingCheckpoint");
+
 		// As a first step to complete the checkpoint, we register its state with the registry
 		Map<OperatorID, OperatorState> operatorStates = pendingCheckpoint.getOperatorStates();
 		sharedStateRegistry.registerAll(operatorStates.values());
+
+		LOG.info("#################################sharedStateRegistry registerAll");
 
 		try {
 			try {
 				// externalize the checkpoint if required
 				if (pendingCheckpoint.getProps().externalizeCheckpoint()) {
+					LOG.info("#################################finalizeCheckpointExternalized before");
 					completedCheckpoint = pendingCheckpoint.finalizeCheckpointExternalized();
 				} else {
+					LOG.info("#################################finalizeCheckpointNonExternalized before");
 					completedCheckpoint = pendingCheckpoint.finalizeCheckpointNonExternalized();
 				}
 			} catch (Exception e1) {
@@ -877,13 +886,16 @@ public class CheckpointCoordinator {
 				throw new CheckpointException("Could not finalize the pending checkpoint " + checkpointId + '.', e1);
 			}
 
+			LOG.info("#################################finalizeCheckpointNonExternalized finished");
 			// the pending checkpoint must be discarded after the finalization
 			Preconditions.checkState(pendingCheckpoint.isDiscarded() && completedCheckpoint != null);
 
 			// TODO: add savepoints to completed checkpoint store once FLINK-4815 has been completed
 			if (!completedCheckpoint.getProperties().isSavepoint()) {
 				try {
+					LOG.info("#################################completedCheckpointStore addCheckpoint before");
 					completedCheckpointStore.addCheckpoint(completedCheckpoint);
+					LOG.info("#################################completedCheckpointStore addCheckpoint after");
 				} catch (Exception exception) {
 					// we failed to store the completed checkpoint. Let's clean up
 					executor.execute(new Runnable() {
@@ -901,15 +913,20 @@ public class CheckpointCoordinator {
 				}
 
 				// drop those pending checkpoints that are at prior to the completed one
+				LOG.info("#################################dropSubsumedCheckpoints before");
 				dropSubsumedCheckpoints(checkpointId);
+				LOG.info("#################################dropSubsumedCheckpoints after");
 			}
 		} finally {
 			pendingCheckpoints.remove(checkpointId);
 
+			LOG.info("#################################triggerQueuedRequests before");
 			triggerQueuedRequests();
+			LOG.info("#################################triggerQueuedRequests after");
 		}
 
 		rememberRecentCheckpointId(checkpointId);
+		LOG.info("#################################rememberRecentCheckpointId after");
 
 		// record the time when this was completed, to calculate
 		// the 'min delay between checkpoints'

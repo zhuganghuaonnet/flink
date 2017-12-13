@@ -72,8 +72,24 @@ public class Kafka09PartitionDiscoverer extends AbstractPartitionDiscoverer {
 
 		try {
 			for (String topic : topics) {
-				for (PartitionInfo partitionInfo : kafkaConsumer.partitionsFor(topic)) {
-					partitions.add(new KafkaTopicPartition(partitionInfo.topic(), partitionInfo.partition()));
+				int maxRetryTimes = 5;
+				while (maxRetryTimes > 0) {
+					List<PartitionInfo> partitionInfos = kafkaConsumer.partitionsFor(topic);
+					if (partitionInfos != null){
+						for (PartitionInfo partitionInfo : partitionInfos) {
+							partitions.add(new KafkaTopicPartition(partitionInfo.topic(), partitionInfo.partition()));
+						}
+						break;
+					}
+					else {
+						maxRetryTimes--;
+						try {
+							Thread.sleep(1000);
+						}
+						catch (InterruptedException ex){
+
+						}
+					}
 				}
 			}
 		} catch (org.apache.kafka.common.errors.WakeupException e) {
